@@ -1,2 +1,4 @@
-# connection_tracker
-Demo project to track inbound and outbound TCP and UDP connections using BPF
+# conn_tracker
+
+A demo tool to monitor inbound and outbound connections.
+
