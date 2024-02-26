@@ -40,7 +40,7 @@ struct bpf_map_def history_map = {.type = BPF_MAP_TYPE_RINGBUF, .max_entries = 2
 SEC("maps")
 struct bpf_map_def pid_map = {
     .type = BPF_MAP_TYPE_LRU_HASH,
-    .key_size = sizeof(connection_tuple_t),,
+    .key_size = sizeof(connection_tuple_t),
     .value_size = sizeof(uint64_t),
     .max_entries = 1024};
 
@@ -111,7 +111,7 @@ handle_connection(bpf_sock_ops_t* ctx, bool is_ipv4, bool connected)
             history.end_time = now;
             uint64_t* pid = (uint64_t*)bpf_map_lookup_and_delete_elem(&pid_map, &key);
             if (pid) {
-                history.pid = *pid;
+                history.tgidpid = *pid;
             }
             bpf_ringbuf_output(&history_map, &history, sizeof(history), 0);
         }
