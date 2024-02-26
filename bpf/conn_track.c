@@ -36,6 +36,15 @@ struct bpf_map_def connection_map = {
 SEC("maps")
 struct bpf_map_def history_map = {.type = BPF_MAP_TYPE_RINGBUF, .max_entries = 256 * 1024};
 
+// Create map to track from connetion tuple to process id.
+SEC("maps")
+struct bpf_map_def pid_map = {
+    .type = BPF_MAP_TYPE_LRU_HASH,
+    .key_size = sizeof(connection_tuple_t),,
+    .value_size = sizeof(uint64_t),
+    .max_entries = 1024};
+
+
 __attribute__((always_inline)) void
 log_tuple(connection_tuple_t* tuple, bool ipv4, bool connect)
 {
@@ -84,8 +93,11 @@ handle_connection(bpf_sock_ops_t* ctx, bool is_ipv4, bool connected)
     uint64_t now = bpf_ktime_get_ns();
 
     if (connected) {
+        uint64_t pid = bpf_get_current_pid_tgid();
         log_tuple(&key, is_ipv4, true);
         bpf_map_update_elem(&connection_map, &key, &now, 0);
+        bpf_map_update_elem(&pid_map, &key, &pid, 0);
+
     } else {
         uint64_t* start_time = (uint64_t*)bpf_map_lookup_and_delete_elem(&connection_map, &key);
         if (start_time) {
@@ -97,7 +109,10 @@ handle_connection(bpf_sock_ops_t* ctx, bool is_ipv4, bool connected)
             history.is_ipv4 = is_ipv4;
             history.start_time = *start_time;
             history.end_time = now;
-            history.tgidpid = bpf_get_current_pid_tgid();
+            uint64_t* pid = (uint64_t*)bpf_map_lookup_and_delete_elem(&pid_map, &key);
+            if (pid) {
+                history.pid = *pid;
+            }
             bpf_ringbuf_output(&history_map, &history, sizeof(history), 0);
         }
     }
