@@ -32,16 +32,16 @@ std::string interface_luid_to_name(uint64_t luid)
     std::string name(IF_MAX_STRING_SIZE + 1, ' ');
     NET_LUID net_luid;
     net_luid.Value = luid;
-    if (ConvertInterfaceLuidToNameA(&net_luid, name.data(), name.size()) != 0) {
+    if (ConvertInterfaceLuidToNameA(&net_luid, name.data(), name.size()) != 0)
+    {
         name = "unknown";
     }
     name = name.substr(0, name.find_first_of(' '));
     return name;
 }
 
-
 std::string
-trim(const std::string& str)
+trim(const std::string &str)
 {
     auto start = str.find_first_not_of(' ');
     if (start == std::string::npos)
@@ -49,7 +49,8 @@ trim(const std::string& str)
     auto end = str.find_first_of(' ', start);
     if (end == std::string::npos)
         return str.substr(start);
-    else {
+    else
+    {
         return str.substr(start, end - start);
     }
 }
@@ -58,22 +59,24 @@ trim(const std::string& str)
 #define MAX_IPV6_ADDRESS_LENGTH 46
 
 std::string
-ip_address_to_string(bool ipv4, const ip_address_t& ip_address, const uint64_t interface_luid)
+ip_address_to_string(bool ipv4, const ip_address_t &ip_address, const uint64_t interface_luid)
 {
     std::string buffer;
-    if (ipv4) {
+    if (ipv4)
+    {
         buffer.resize(MAX_IPV4_ADDRESS_LENGTH);
         in_addr addr;
         addr.S_un.S_addr = ip_address.ipv4;
         auto end = RtlIpv4AddressToStringA(&addr, buffer.data());
         buffer.resize(end - buffer.data());
-    } else {
+    }
+    else
+    {
         buffer.resize(MAX_IPV6_ADDRESS_LENGTH);
         in_addr6 addr;
         memcpy(addr.u.Byte, ip_address.ipv6, sizeof(ip_address.ipv6));
         auto end = RtlIpv6AddressToStringA(&addr, buffer.data());
         buffer.resize(end - buffer.data());
-        
     }
     buffer += "%" + interface_luid_to_name(interface_luid);
 
@@ -83,22 +86,21 @@ ip_address_to_string(bool ipv4, const ip_address_t& ip_address, const uint64_t i
 extern "C"
 {
     int
-    conn_track_history_callback(void* ctx, void* data, size_t size);
+    conn_track_history_callback(void *ctx, void *data, size_t size);
 }
 
-int
-conn_track_history_callback(void* ctx, void* data, size_t size)
+int conn_track_history_callback(void *ctx, void *data, size_t size)
 {
     UNREFERENCED_PARAMETER(ctx);
 
-    if (size == sizeof(connection_history_t)) {
-        auto history = reinterpret_cast<connection_history_t*>(data);
+    if (size == sizeof(connection_history_t))
+    {
+        auto history = reinterpret_cast<connection_history_t *>(data);
         auto source = ip_address_to_string(history->is_ipv4, history->tuple.src_ip, history->tuple.interface_luid) + ":" +
                       std::to_string(htons(history->tuple.src_port));
         auto dest = ip_address_to_string(history->is_ipv4, history->tuple.dst_ip, history->tuple.interface_luid) + ":" +
                     std::to_string(htons(history->tuple.dst_port));
-        std::cout << source << "==>" << dest << "\t" << _protocol[history->tuple.protocol]
-                  << "\t" << std::hex << (history->tgidpid >> 32) << "\t" std::dec << std::endl;
+        std::cout << source << "==>" << dest << "\t" << _protocol[history->tuple.protocol] << "\t" << std::hex << (history->tgidpid >> 32) << std::dec << std::endl;
     }
     return 0;
 }
@@ -107,10 +109,10 @@ bool _shutdown = false;
 std::condition_variable _wait_for_shutdown;
 std::mutex _wait_for_shutdown_mutex;
 
-int
-control_handler(unsigned long control_type)
+int control_handler(unsigned long control_type)
 {
-    if (control_type != CTRL_C_EVENT) {
+    if (control_type != CTRL_C_EVENT)
+    {
         return false;
     }
     std::unique_lock lock(_wait_for_shutdown_mutex);
@@ -119,12 +121,12 @@ control_handler(unsigned long control_type)
     return true;
 }
 
-int
-main(int argc, char** argv)
+int main(int argc, char **argv)
 {
     UNREFERENCED_PARAMETER(argc);
     UNREFERENCED_PARAMETER(argv);
-    if (!SetConsoleCtrlHandler(control_handler, true)) {
+    if (!SetConsoleCtrlHandler(control_handler, true))
+    {
         std::cerr << "SetConsoleCtrlHandler: " << GetLastError() << std::endl;
         return 1;
     }
@@ -132,52 +134,59 @@ main(int argc, char** argv)
     std::cerr << "Press Ctrl-C to shutdown" << std::endl;
 
     // Load conn_track.sys BPF program.
-    struct bpf_object* object = bpf_object__open("conn_track.sys");
-    if (!object) {
+    struct bpf_object *object = bpf_object__open("conn_track.sys");
+    if (!object)
+    {
         std::cerr << "bpf_object__open for conn_track.sys failed: " << errno << std::endl;
         return 1;
     }
 
-    if (bpf_object__load(object) < 0) {
+    if (bpf_object__load(object) < 0)
+    {
         std::cerr << "bpf_object__load for conn_track.sys failed: " << errno << std::endl;
         return 1;
     }
 
     // Attach program to cgroup/connect4 attach point.
     auto program_v4 = bpf_object__find_program_by_name(object, "connection_tracker_v4");
-    if (!program_v4) {
+    if (!program_v4)
+    {
         std::cerr << "bpf_object__find_program_by_name for \"connection_tracker\" failed: " << errno << std::endl;
         return 1;
     }
 
     auto link_v4 = bpf_program__attach(program_v4);
-    if (!link_v4) {
+    if (!link_v4)
+    {
         std::cerr << "BPF program conn_track.sys failed to attach: " << errno << std::endl;
         return 1;
     }
 
     // Attach program to cgroup/connect6 attach point.
     auto program_v6 = bpf_object__find_program_by_name(object, "connection_tracker_v6");
-    if (!program_v6) {
+    if (!program_v6)
+    {
         std::cerr << "bpf_object__find_program_by_name for \"connection_tracker\" failed: " << errno << std::endl;
         return 1;
     }
 
     auto link_v6 = bpf_program__attach(program_v6);
-    if (!link_v6) {
+    if (!link_v6)
+    {
         std::cerr << "BPF program conn_track.sys failed to attach: " << errno << std::endl;
         return 1;
     }
 
-
     // Attach to ring buffer.
-    bpf_map* map = bpf_object__find_map_by_name(object, "history_map");
-    if (!map) {
+    bpf_map *map = bpf_object__find_map_by_name(object, "history_map");
+    if (!map)
+    {
         std::cerr << "Unable to locate history map: " << errno << std::endl;
         return 1;
     }
     auto ring = ring_buffer__new(bpf_map__fd(map), conn_track_history_callback, nullptr, nullptr);
-    if (!ring) {
+    if (!ring)
+    {
         std::cerr << "Unable to create ring buffer: " << errno << std::endl;
         return 1;
     }
@@ -185,7 +194,8 @@ main(int argc, char** argv)
     // Wait for Ctrl-C.
     {
         std::unique_lock lock(_wait_for_shutdown_mutex);
-        _wait_for_shutdown.wait(lock, []() { return _shutdown; });
+        _wait_for_shutdown.wait(lock, []()
+                                { return _shutdown; });
     }
 
     // Detach from the attach point.
