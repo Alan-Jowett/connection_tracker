@@ -97,11 +97,8 @@ conn_track_history_callback(void* ctx, void* data, size_t size)
                       std::to_string(htons(history->tuple.src_port));
         auto dest = ip_address_to_string(history->is_ipv4, history->tuple.dst_ip, history->tuple.interface_luid) + ":" +
                     std::to_string(htons(history->tuple.dst_port));
-        double duration = static_cast<double>(history->end_time);
-        duration -= static_cast<double>(history->start_time);
-        duration /= 1e9;
-        std::cout << source << "==>" << dest << "\t" << _protocol[history->tuple.protocol] << "\t" << duration
-                  << "\t" << std::hex << (history->tgidpid >> 32) << "\t" << (history->tgidpid & MAXULONG32) << std::dec << std::endl;
+        std::cout << source << "==>" << dest << "\t" << _protocol[history->tuple.protocol]
+                  << "\t" << std::hex << (history->tgidpid >> 32) << "\t" std::dec << std::endl;
     }
     return 0;
 }
@@ -146,18 +143,32 @@ main(int argc, char** argv)
         return 1;
     }
 
-    // Attach program to sock_ops attach point.
-    auto program = bpf_object__find_program_by_name(object, "connection_tracker");
-    if (!program) {
+    // Attach program to cgroup/connect4 attach point.
+    auto program_v4 = bpf_object__find_program_by_name(object, "connection_tracker_v4");
+    if (!program_v4) {
         std::cerr << "bpf_object__find_program_by_name for \"connection_tracker\" failed: " << errno << std::endl;
         return 1;
     }
 
-    auto link = bpf_program__attach(program);
-    if (!link) {
+    auto link_v4 = bpf_program__attach(program_v4);
+    if (!link_v4) {
         std::cerr << "BPF program conn_track.sys failed to attach: " << errno << std::endl;
         return 1;
     }
+
+    // Attach program to cgroup/connect6 attach point.
+    auto program_v6 = bpf_object__find_program_by_name(object, "connection_tracker_v6");
+    if (!program_v6) {
+        std::cerr << "bpf_object__find_program_by_name for \"connection_tracker\" failed: " << errno << std::endl;
+        return 1;
+    }
+
+    auto link_v6 = bpf_program__attach(program_v6);
+    if (!link_v6) {
+        std::cerr << "BPF program conn_track.sys failed to attach: " << errno << std::endl;
+        return 1;
+    }
+
 
     // Attach to ring buffer.
     bpf_map* map = bpf_object__find_map_by_name(object, "history_map");
@@ -178,9 +189,13 @@ main(int argc, char** argv)
     }
 
     // Detach from the attach point.
-    int link_fd = bpf_link__fd(link);
+    int link_fd = bpf_link__fd(link_v4);
     bpf_link_detach(link_fd);
-    bpf_link__destroy(link);
+    bpf_link__destroy(link_v4);
+
+    link_fd = bpf_link__fd(link_v6);
+    bpf_link_detach(link_fd);
+    bpf_link__destroy(link_v6);
 
     // Close ring buffer.
     ring_buffer__free(ring);

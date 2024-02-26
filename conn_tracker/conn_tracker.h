@@ -28,7 +28,5 @@ typedef struct _connection_history
 {
     connection_tuple_t tuple;
     bool is_ipv4;
-    uint64_t start_time;
-    uint64_t end_time;
     uint64_t tgidpid;
 } connection_history_t;
